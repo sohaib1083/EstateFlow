@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -8,68 +8,86 @@ import { supabase } from '@/lib/supabase';
 export default function NewPaymentPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
-  // Form state
   const [formData, setFormData] = useState({
-    agreementId: '',
+    rent_agreement_id: '',
+    payment_type: 'rent',
     amount: '',
-    paymentDate: new Date().toISOString().split('T')[0], // Today's date
-    paymentMethod: 'Online Transfer',
-    referenceNumber: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'cash',
+    reference_number: '',
     notes: '',
-    isPartialPayment: false
+    status: 'completed'
   });
 
-  // Handle input change
+  const [rentAgreements, setRentAgreements] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchRentAgreements();
+  }, []);
+
+  async function fetchRentAgreements() {
+    try {
+      const { data, error } = await supabase
+        .from('rent_agreements')
+        .select(`
+          id,
+          monthly_rent,
+          properties(title, address),
+          tenants(full_name)
+        `)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setRentAgreements(data || []);
+    } catch (error) {
+      console.error('Error fetching rent agreements:', error);
+    }
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target as HTMLInputElement;
-    const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
-    
+    const { name, value } = e.target;
     setFormData(prevData => ({
       ...prevData,
-      [name]: val
+      [name]: value
     }));
   };
 
-  // In a real app, you would fetch this data from Supabase
-  const agreements = [
-    { id: '1', property: 'Sunset Apartment 3B', tenant: 'John Doe', rent: 'Rs.15,000' },
-    { id: '2', property: 'Green Villa 204', tenant: 'Jane Smith', rent: 'Rs.22,000' },
-    { id: '3', property: 'Ocean View Complex 7A', tenant: 'Robert Johnson', rent: 'Rs.18,500' },
-    { id: '4', property: 'Mountain Lodge 5D', tenant: 'Sarah Williams', rent: 'Rs.20,000' },
-    { id: '5', property: 'City Center Flat 12C', tenant: 'David Brown', rent: 'Rs.25,000' },
-  ];
-
-  // Get rent amount when agreement changes
-  const handleAgreementChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const agreementId = e.target.value;
-    const selectedAgreement = agreements.find(a => a.id === agreementId);
-    
-    setFormData(prev => ({
-      ...prev,
-      agreementId,
-      amount: selectedAgreement ? selectedAgreement.rent.replace('Rs.', '') : ''
-    }));
-  };
-
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
 
     try {
-      // In a real app, you would save this data to Supabase
-      console.log('Submitting payment data:', formData);
+      if (!formData.rent_agreement_id || !formData.amount || !formData.payment_date) {
+        throw new Error('Please fill in rent agreement, amount, and payment date (required fields)');
+      }
 
-      // Simulated delay to show loading state
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const insertData = {
+        rent_agreement_id: formData.rent_agreement_id,
+        payment_type: formData.payment_type,
+        amount: parseFloat(formData.amount),
+        payment_date: formData.payment_date,
+        payment_method: formData.payment_method,
+        reference_number: formData.reference_number || null,
+        notes: formData.notes || null,
+        status: formData.status
+      };
 
-      // Navigate back to payments list
+      const { data, error: supabaseError } = await supabase
+        .from('payments')
+        .insert([insertData])
+        .select()
+        .single();
+
+      if (supabaseError) throw supabaseError;
+
       router.push('/dashboard/payments');
-      router.refresh();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error recording payment:', error);
-      alert('Failed to record payment. Please try again.');
+      setError(error.message || 'Failed to record payment. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -77,139 +95,170 @@ export default function NewPaymentPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="mb-6">
+        <Link
+          href="/dashboard/payments"
+          className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+        >
+          <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Payments
+        </Link>
+      </div>
+
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-900">Record New Payment</h1>
       </div>
 
+      {error && (
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-md p-4">
+          <p className="text-sm font-medium text-red-800">{error}</p>
+        </div>
+      )}
+
       <div className="mt-8">
         <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 shadow rounded-lg">
           <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="agreementId" className="block text-sm font-medium text-gray-700">
-                Rent Agreement *
+            <div className="sm:col-span-2">
+              <label htmlFor="rent_agreement_id" className="block text-sm font-medium text-gray-700">
+                Rent Agreement <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1">
-                <select
-                  id="agreementId"
-                  name="agreementId"
-                  required
-                  value={formData.agreementId}
-                  onChange={handleAgreementChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                >
-                  <option value="">Select a rent agreement</option>
-                  {agreements.map(agreement => (
-                    <option key={agreement.id} value={agreement.id}>
-                      {agreement.property} - {agreement.tenant} ({agreement.rent})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select
+                name="rent_agreement_id"
+                id="rent_agreement_id"
+                required
+                value={formData.rent_agreement_id}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="">Select a rent agreement</option>
+                {rentAgreements.map((agreement) => (
+                  <option key={agreement.id} value={agreement.id}>
+                    {agreement.properties?.title} - {agreement.tenants?.full_name} (₹{agreement.monthly_rent}/month)
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label htmlFor="paymentDate" className="block text-sm font-medium text-gray-700">
-                Payment Date *
+              <label htmlFor="payment_type" className="block text-sm font-medium text-gray-700">
+                Payment Type <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1">
-                <input
-                  type="date"
-                  name="paymentDate"
-                  id="paymentDate"
-                  required
-                  value={formData.paymentDate}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                />
-              </div>
+              <select
+                name="payment_type"
+                id="payment_type"
+                required
+                value={formData.payment_type}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="rent">Rent</option>
+                <option value="security_deposit">Security Deposit</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="utility">Utility</option>
+                <option value="other">Other</option>
+              </select>
             </div>
 
             <div>
               <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-                Amount (Rs.) *
+                Amount (Rs.) <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1">
-                <input
-                  type="number"
-                  name="amount"
-                  id="amount"
-                  step="0.01"
-                  min="0"
-                  required
-                  value={formData.amount}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700">
-                Payment Method *
-              </label>
-              <div className="mt-1">
-                <select
-                  id="paymentMethod"
-                  name="paymentMethod"
-                  required
-                  value={formData.paymentMethod}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                >
-                  <option>Online Transfer</option>
-                  <option>UPI</option>
-                  <option>Cash</option>
-                  <option>Check</option>
-                  <option>Bank Transfer</option>
-                  <option>Other</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="referenceNumber" className="block text-sm font-medium text-gray-700">
-                Reference/Transaction Number
-              </label>
-              <div className="mt-1">
-                <input
-                  type="text"
-                  name="referenceNumber"
-                  id="referenceNumber"
-                  value={formData.referenceNumber}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center h-full pt-5">
               <input
-                id="isPartialPayment"
-                name="isPartialPayment"
-                type="checkbox"
-                checked={formData.isPartialPayment}
+                type="number"
+                name="amount"
+                id="amount"
+                required
+                min="0"
+                step="0.01"
+                value={formData.amount}
                 onChange={handleChange}
-                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter payment amount"
               />
-              <label htmlFor="isPartialPayment" className="ml-2 block text-sm text-gray-700">
-                This is a partial payment
+            </div>
+
+            <div>
+              <label htmlFor="payment_date" className="block text-sm font-medium text-gray-700">
+                Payment Date <span className="text-red-500">*</span>
               </label>
+              <input
+                type="date"
+                name="payment_date"
+                id="payment_date"
+                required
+                value={formData.payment_date}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700">
+                Payment Method
+              </label>
+              <select
+                name="payment_method"
+                id="payment_method"
+                value={formData.payment_method}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cheque">Cheque</option>
+                <option value="online">Online Payment</option>
+                <option value="card">Card</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="reference_number" className="block text-sm font-medium text-gray-700">
+                Reference Number
+              </label>
+              <input
+                type="text"
+                name="reference_number"
+                id="reference_number"
+                value={formData.reference_number}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Transaction/Cheque reference number"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="status"
+                id="status"
+                required
+                value={formData.status}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
             </div>
 
             <div className="sm:col-span-2">
               <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
                 Notes
               </label>
-              <div className="mt-1">
-                <textarea
-                  id="notes"
-                  name="notes"
-                  rows={3}
-                  value={formData.notes}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                ></textarea>
-              </div>
+              <textarea
+                name="notes"
+                id="notes"
+                rows={3}
+                value={formData.notes}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Any additional notes about this payment..."
+              />
             </div>
           </div>
 
@@ -223,7 +272,7 @@ export default function NewPaymentPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
             >
               {isSubmitting ? 'Recording...' : 'Record Payment'}
             </button>
