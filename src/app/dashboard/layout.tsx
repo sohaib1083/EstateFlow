@@ -99,6 +99,7 @@ export default function DashboardLayout({
                 <Link
                   key={item.name}
                   href={item.href}
+                  onClick={() => setSidebarOpen(false)} // Add this line
                   className={`${
                     pathname === item.href
                       ? 'bg-indigo-800 text-white'

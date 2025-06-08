@@ -122,19 +122,16 @@ export default function OwnersPage() {
                         {filteredOwners.map((owner) => (
                           <tr key={owner.id}>                            
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">
-                                {owner.full_name} {/* ✓ Use full_name */}
-                              </div>
+                              <div className="text-sm font-medium text-gray-900">{owner.full_name}</div>
                             </td>
+
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">{owner.phone}</div>
-                              {owner.email && (
-                                <div className="text-sm text-gray-500">{owner.email}</div>
-                              )}
-                            </td>
+                              <div className="text-sm text-gray-500">{owner.phone}</div>
+                            </td>                            
+                            
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm text-gray-900">
-                                {owner.propertyCount || 0} properties
+                                {owner.property_owners?.length || 0} properties
                               </div>
                             </td>
                             
