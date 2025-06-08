@@ -11,10 +11,12 @@ export default function EditRentAgreementPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agreement, setAgreement] = useState<any>(null);
   
   const [formData, setFormData] = useState({
     property_id: '',
     tenant_id: '',
+    owner_id: '',
     start_date: '',
     end_date: '',
     monthly_rent: '',
@@ -25,12 +27,14 @@ export default function EditRentAgreementPage() {
 
   const [properties, setProperties] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
+  const [owners, setOwners] = useState<any[]>([]);
 
   useEffect(() => {
     if (params.id) {
       fetchAgreement();
       fetchProperties();
       fetchTenants();
+      fetchOwners();
     }
   }, [params.id]);
 
@@ -38,15 +42,39 @@ export default function EditRentAgreementPage() {
     try {
       const { data, error } = await supabase
         .from('rent_agreements')
-        .select('*')
+        .select(`
+          *,
+          properties(
+            id,
+            title,
+            address
+          ),
+          tenants(
+            id,
+            full_name,
+            phone
+          ),
+          owners(
+            id,
+            full_name,
+            phone
+          )
+        `)
         .eq('id', params.id)
         .single();
 
       if (error) throw error;
       
+      console.log('Fetched agreement data:', data);
+      
+      // Set the agreement data for display
+      setAgreement(data);
+      
+      // Populate form data
       setFormData({
         property_id: data.property_id || '',
         tenant_id: data.tenant_id || '',
+        owner_id: data.owner_id || '',
         start_date: data.start_date || '',
         end_date: data.end_date || '',
         monthly_rent: data.monthly_rent ? data.monthly_rent.toString() : '',
@@ -54,6 +82,7 @@ export default function EditRentAgreementPage() {
         terms_conditions: data.terms_conditions || '',
         status: data.status || 'active'
       });
+      
     } catch (error) {
       console.error('Error fetching rent agreement:', error);
       setError('Failed to load rent agreement data');
@@ -64,13 +93,38 @@ export default function EditRentAgreementPage() {
 
   async function fetchProperties() {
     try {
+      console.log('Fetching properties...');
       const { data, error } = await supabase
         .from('properties')
-        .select('id, title, address')
+        .select(`
+          id, 
+          title, 
+          address,
+          property_owners(
+            owner_id,
+            ownership_percentage,
+            owners(
+              id,
+              full_name
+            )
+          )
+        `)
         .order('title');
 
+      console.log('Properties data:', data);
+      console.log('Properties error:', error);
+
       if (error) throw error;
-      setProperties(data || []);
+      
+      // Transform the data to make it easier to work with
+      const transformedProperties = data?.map(property => ({
+        ...property,
+        // Get the primary owner (first one or highest percentage)
+        primary_owner: property.property_owners?.[0]?.owners || null,
+        primary_owner_id: property.property_owners?.[0]?.owner_id || null
+      })) || [];
+
+      setProperties(transformedProperties);
     } catch (error) {
       console.error('Error fetching properties:', error);
     }
@@ -90,9 +144,34 @@ export default function EditRentAgreementPage() {
     }
   }
 
+  async function fetchOwners() {
+    try {
+      const { data, error } = await supabase
+        .from('owners')
+        .select('id, full_name, phone')
+        .order('full_name');
+
+      if (error) throw error;
+      setOwners(data || []);
+    } catch (error) {
+      console.error('Error fetching owners:', error);
+    }
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePropertyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const propertyId = e.target.value;
+    setFormData(prev => ({ ...prev, property_id: propertyId }));
+    
+    // Auto-select the primary owner for this property
+    const selectedProperty = properties.find(p => p.id === propertyId);
+    if (selectedProperty && selectedProperty.primary_owner_id) {
+      setFormData(prev => ({ ...prev, owner_id: selectedProperty.primary_owner_id }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,13 +180,14 @@ export default function EditRentAgreementPage() {
     setError(null);
 
     try {
-      if (!formData.property_id || !formData.tenant_id || !formData.start_date || !formData.end_date || !formData.monthly_rent) {
+      if (!formData.property_id || !formData.tenant_id || !formData.owner_id || !formData.start_date || !formData.end_date || !formData.monthly_rent) {
         throw new Error('Please fill in all required fields');
       }
 
       const updateData = {
         property_id: formData.property_id,
         tenant_id: formData.tenant_id,
+        owner_id: formData.owner_id,
         start_date: formData.start_date,
         end_date: formData.end_date,
         monthly_rent: parseFloat(formData.monthly_rent),
@@ -168,6 +248,27 @@ export default function EditRentAgreementPage() {
             </div>
           )}
 
+          {/* Current Agreement Info (Read-only) */}
+          {agreement && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Current Agreement Details</h3>
+              <div className="grid grid-cols-1 gap-y-3 gap-x-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Property</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{agreement.properties?.title}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Owner</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{agreement.owners?.full_name}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Tenant</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{agreement.tenants?.full_name}</dd>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
             <div>
               <label htmlFor="property_id" className="block text-sm font-medium text-gray-700">
@@ -178,13 +279,42 @@ export default function EditRentAgreementPage() {
                 id="property_id"
                 required
                 value={formData.property_id}
-                onChange={handleChange}
+                onChange={handlePropertyChange}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               >
                 <option value="">Select a property</option>
-                {properties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.title} - {property.address}
+                {properties.length === 0 ? (
+                  <option disabled>No properties available</option>
+                ) : (
+                  properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.title} - {property.address}
+                      {property.primary_owner && ` (Owner: ${property.primary_owner.full_name})`}
+                    </option>
+                  ))
+                )}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                {properties.length} properties loaded
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="owner_id" className="block text-sm font-medium text-gray-700">
+                Owner <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="owner_id"
+                id="owner_id"
+                required
+                value={formData.owner_id}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="">Select an owner</option>
+                {owners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.full_name} - {owner.phone}
                   </option>
                 ))}
               </select>
@@ -208,6 +338,24 @@ export default function EditRentAgreementPage() {
                     {tenant.full_name} - {tenant.phone}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="status"
+                id="status"
+                required
+                value={formData.status}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="terminated">Terminated</option>
               </select>
             </div>
 
@@ -274,24 +422,6 @@ export default function EditRentAgreementPage() {
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 placeholder="Enter security deposit amount"
               />
-            </div>
-
-            <div>
-              <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                Status <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="status"
-                id="status"
-                required
-                value={formData.status}
-                onChange={handleChange}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              >
-                <option value="active">Active</option>
-                <option value="expired">Expired</option>
-                <option value="terminated">Terminated</option>
-              </select>
             </div>
 
             <div className="sm:col-span-2">

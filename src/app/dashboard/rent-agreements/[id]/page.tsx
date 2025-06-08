@@ -27,9 +27,25 @@ export default function RentAgreementDetailPage() {
             title,
             address,
             city,
-            state
+            state,
+            property_owners(
+              owner_id,
+              ownership_percentage,
+              owners(
+                id,
+                full_name,
+                phone,
+                email
+              )
+            )
           ),
           tenants(
+            id,
+            full_name,
+            phone,
+            email
+          ),
+          owners(
             id,
             full_name,
             phone,
@@ -148,6 +164,40 @@ export default function RentAgreementDetailPage() {
               </dd>
             </div>
 
+            {/* Owner Information */}
+            <div className="sm:col-span-2 pt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Owner Information</h3>
+            </div>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Owner Name</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {agreement.owners?.full_name || 
+                 agreement.properties?.property_owners?.[0]?.owners?.full_name || 
+                 'No owner assigned'}
+              </dd>
+            </div>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Owner Contact</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {(agreement.owners?.phone || agreement.properties?.property_owners?.[0]?.owners?.phone) && (
+                  <div>
+                    <a href={`tel:${agreement.owners?.phone || agreement.properties?.property_owners?.[0]?.owners?.phone}`} className="text-indigo-600 hover:text-indigo-900">
+                      {agreement.owners?.phone || agreement.properties?.property_owners?.[0]?.owners?.phone}
+                    </a>
+                  </div>
+                )}
+                {(agreement.owners?.email || agreement.properties?.property_owners?.[0]?.owners?.email) && (
+                  <div className="text-gray-500">
+                    <a href={`mailto:${agreement.owners?.email || agreement.properties?.property_owners?.[0]?.owners?.email}`} className="text-indigo-600 hover:text-indigo-900">
+                      {agreement.owners?.email || agreement.properties?.property_owners?.[0]?.owners?.email}
+                    </a>
+                  </div>
+                )}
+              </dd>
+            </div>
+
             {/* Tenant Information */}
             <div className="sm:col-span-2 pt-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Tenant Information</h3>
@@ -159,11 +209,19 @@ export default function RentAgreementDetailPage() {
             </div>
             
             <div>
-              <dt className="text-sm font-medium text-gray-500">Contact</dt>
+              <dt className="text-sm font-medium text-gray-500">Tenant Contact</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                <div>{agreement.tenants?.phone}</div>
+                <div>
+                  <a href={`tel:${agreement.tenants?.phone}`} className="text-indigo-600 hover:text-indigo-900">
+                    {agreement.tenants?.phone}
+                  </a>
+                </div>
                 {agreement.tenants?.email && (
-                  <div className="text-gray-500">{agreement.tenants?.email}</div>
+                  <div className="text-gray-500">
+                    <a href={`mailto:${agreement.tenants?.email}`} className="text-indigo-600 hover:text-indigo-900">
+                      {agreement.tenants?.email}
+                    </a>
+                  </div>
                 )}
               </dd>
             </div>

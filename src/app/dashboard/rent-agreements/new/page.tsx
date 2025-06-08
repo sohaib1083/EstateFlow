@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,292 +7,155 @@ import { supabase } from '@/lib/supabase';
 
 export default function NewRentAgreementPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Data lists
-  const [properties, setProperties] = useState<any[]>([]);
-  const [tenants, setTenants] = useState<any[]>([]);
-  const [owners, setOwners] = useState<any[]>([]);
-  
-  // Form toggles
-  const [showNewTenant, setShowNewTenant] = useState(false);
-  const [showNewOwner, setShowNewOwner] = useState(false);
-  const [showNewProperty, setShowNewProperty] = useState(false);
-  
-  // Main form data
   const [formData, setFormData] = useState({
     property_id: '',
     tenant_id: '',
     owner_id: '',
-    startDate: '',
-    endDate: '',
-    rentAmount: '',
-    securityDeposit: '',
-    terms: ''
+    start_date: '',
+    end_date: '',
+    monthly_rent: '',
+    security_deposit: '',
+    terms_conditions: '',
+    status: 'active'
   });
 
-  // New forms data - Fix field names to match schema
-  const [newTenant, setNewTenant] = useState({
-    full_name: '', // ✓ Correct - matches schema
-    phone: '',     // ✓ Correct - matches schema
-    email: '',     // ✓ Correct - matches schema
-    address: ''    // ✓ Correct - matches schema
-    // Remove id_number - it doesn't exist in your schema
-  });
-
-  const [newOwner, setNewOwner] = useState({
-    full_name: '',
-    phone: '',
-    email: '',
-    address: ''
-  });
-
-  const [newProperty, setNewProperty] = useState({
-    title: '',
-    address: '',
-    city: '',
-    state: '',
-    type: 'residential',
-    area_sqft: '',
-    price: '',
-    status: 'for_rent',
-    bedrooms: '',
-    bathrooms: ''
-  });
+  const [allProperties, setAllProperties] = useState<any[]>([]);
+  const [filteredProperties, setFilteredProperties] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [owners, setOwners] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchProperties();
+    fetchAllProperties();
     fetchTenants();
     fetchOwners();
   }, []);
 
-  const fetchProperties = async () => {
+  // Filter properties when owner changes
+  useEffect(() => {
+    if (formData.owner_id) {
+      const ownerProperties = allProperties.filter(property => 
+        property.property_owners?.some((po: any) => po.owner_id === formData.owner_id)
+      );
+      setFilteredProperties(ownerProperties);
+      
+      // Reset property selection if current property doesn't belong to selected owner
+      const currentPropertyValid = ownerProperties.some(p => p.id === formData.property_id);
+      if (!currentPropertyValid && formData.property_id) {
+        setFormData(prev => ({ ...prev, property_id: '' }));
+      }
+    } else {
+      setFilteredProperties(allProperties);
+    }
+  }, [formData.owner_id, allProperties]);
+
+  async function fetchAllProperties() {
     try {
       const { data, error } = await supabase
         .from('properties')
-        .select('*')
-        .in('status', ['for_rent', 'available'])
+        .select(`
+          id, 
+          title, 
+          address,
+          property_owners(
+            owner_id,
+            ownership_percentage,
+            owners(
+              id,
+              full_name
+            )
+          )
+        `)
         .order('title');
-      
+
       if (error) throw error;
-      setProperties(data || []);
+      setAllProperties(data || []);
+      setFilteredProperties(data || []); // Initially show all properties
     } catch (error) {
       console.error('Error fetching properties:', error);
     }
-  };
+  }
 
-  const fetchTenants = async () => {
+  async function fetchTenants() {
     try {
       const { data, error } = await supabase
         .from('tenants')
-        .select('*')
-        .order('full_name'); // ✓ Correct field name
-      
+        .select('id, full_name, phone')
+        .order('full_name');
+
       if (error) throw error;
       setTenants(data || []);
     } catch (error) {
       console.error('Error fetching tenants:', error);
     }
-  };
+  }
 
-  const fetchOwners = async () => {
+  async function fetchOwners() {
     try {
       const { data, error } = await supabase
         .from('owners')
-        .select('*')
+        .select('id, full_name, phone')
         .order('full_name');
-      
+
       if (error) throw error;
       setOwners(data || []);
     } catch (error) {
       console.error('Error fetching owners:', error);
     }
-  };
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleNewTenantChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setNewTenant(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleNewOwnerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setNewOwner(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleNewPropertyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setNewProperty(prev => ({ ...prev, [name]: value }));
-  };
-
-  const createNewTenant = async () => {
-    try {
-      if (!newTenant.full_name || !newTenant.phone) {
-        throw new Error('Please fill in tenant name and phone number.');
-      }
-
-      const { data, error } = await supabase
-        .from('tenants')
-        .insert([{
-          full_name: newTenant.full_name,
-          phone: newTenant.phone,
-          email: newTenant.email || null,
-          address: newTenant.address || null
-          // Remove id_number field completely
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setTenants([...tenants, data]);
-      setFormData({ ...formData, tenant_id: data.id });
-      setNewTenant({ full_name: '', phone: '', email: '', address: '' }); // Remove id_number
-      setShowNewTenant(false);
-    } catch (error: any) {
-      setError(error.message);
-    }
-  };
-
-  const createNewOwner = async () => {
-    try {
-      if (!newOwner.full_name || !newOwner.phone) {
-        throw new Error('Please fill in owner name and phone number.');
-      }
-
-      const { data, error } = await supabase
-        .from('owners')
-        .insert([{
-          full_name: newOwner.full_name,
-          phone: newOwner.phone,
-          email: newOwner.email || null,
-          address: newOwner.address
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setOwners([...owners, data]);
-      setFormData({ ...formData, owner_id: data.id });
-      setNewOwner({ full_name: '', phone: '', email: '', address: '' });
-      setShowNewOwner(false);
-    } catch (error: any) {
-      setError(error.message);
-    }
-  };
-
-  const createNewProperty = async () => {
-    try {
-      if (!newProperty.title || !newProperty.address || !newProperty.city || !newProperty.area_sqft || !newProperty.price) {
-        throw new Error('Please fill in all required property fields.');
-      }
-
-      const { data: property, error: propertyError } = await supabase
-        .from('properties')
-        .insert([{
-          title: newProperty.title,
-          address: newProperty.address,
-          city: newProperty.city,
-          state: newProperty.state,
-          type: newProperty.type,
-          area_sqft: parseInt(newProperty.area_sqft),
-          price: parseFloat(newProperty.price),
-          status: newProperty.status,
-          bedrooms: newProperty.bedrooms ? parseInt(newProperty.bedrooms) : null,
-          bathrooms: newProperty.bathrooms ? parseInt(newProperty.bathrooms) : null
-        }])
-        .select()
-        .single();
-
-      if (propertyError) throw propertyError;
-
-      // DON'T create property-owner relationship here
-      // It will be created later when the rent agreement form is submitted
-      // The relationship should be created outside of this form flow
-
-      setProperties([...properties, property]);
-      setFormData({ ...formData, property_id: property.id });
-      setNewProperty({
-        title: '', address: '', city: '', state: '', type: 'residential',
-        area_sqft: '', price: '', status: 'for_rent', bedrooms: '', bathrooms: ''
-      });
-      setShowNewProperty(false);
-    } catch (error: any) {
-      setError(error.message);
-    }
+  const handleOwnerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const ownerId = e.target.value;
+    setFormData(prev => ({ 
+      ...prev, 
+      owner_id: ownerId,
+      property_id: '' // Reset property when owner changes
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsSubmitting(true);
     setError(null);
 
     try {
-      // Validate required fields
-      if (!formData.property_id || !formData.tenant_id || !formData.startDate || !formData.endDate || !formData.rentAmount) {
+      if (!formData.property_id || !formData.tenant_id || !formData.owner_id || !formData.start_date || !formData.end_date || !formData.monthly_rent) {
         throw new Error('Please fill in all required fields');
       }
 
-      console.log('Creating rent agreement with data:', formData);
+      const insertData = {
+        property_id: formData.property_id,
+        tenant_id: formData.tenant_id,
+        owner_id: formData.owner_id,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        monthly_rent: parseFloat(formData.monthly_rent),
+        security_deposit: formData.security_deposit ? parseFloat(formData.security_deposit) : 0,
+        terms_conditions: formData.terms_conditions,
+        status: formData.status
+      };
 
-      // Create the rent agreement
-      const { data, error } = await supabase
+      const { data, error: supabaseError } = await supabase
         .from('rent_agreements')
-        .insert([{
-          property_id: formData.property_id,
-          tenant_id: formData.tenant_id,
-          start_date: formData.startDate,
-          end_date: formData.endDate,
-          monthly_rent: parseFloat(formData.rentAmount),
-          security_deposit: parseFloat(formData.securityDeposit || '0'),
-          terms_conditions: formData.terms,
-          status: 'active'
-        }])
+        .insert([insertData])
         .select()
         .single();
 
-      if (error) throw error;
-
-      // Create property-owner relationship if owner is selected
-      if (formData.owner_id) {
-        console.log('Creating property-owner relationship...');
-        
-        const { error: ownerError } = await supabase
-          .from('property_owners')
-          .insert([{
-            property_id: formData.property_id,
-            owner_id: formData.owner_id,
-            ownership_percentage: 100
-          }]);
-
-        if (ownerError) {
-          console.error('Error creating owner relationship:', ownerError);
-          // Don't throw - the agreement was created successfully
-        }
-      }
-
-      // Update property status to rented
-      const { error: statusError } = await supabase
-        .from('properties')
-        .update({ status: 'rented' })
-        .eq('id', formData.property_id);
-
-      if (statusError) {
-        console.error('Error updating property status:', statusError);
-      }
+      if (supabaseError) throw supabaseError;
 
       router.push('/dashboard/rent-agreements');
     } catch (error: any) {
       console.error('Error creating rent agreement:', error);
-      setError(error.message || 'Failed to create rent agreement');
+      setError(error.message || 'Failed to create rent agreement. Please try again.');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -310,429 +173,203 @@ export default function NewRentAgreementPage() {
         </Link>
       </div>
 
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h1 className="text-2xl font-semibold text-gray-900">Create New Rent Agreement</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-semibold text-gray-900">Create New Rent Agreement</h1>
+      </div>
+
+      {error && (
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-md p-4">
+          <p className="text-sm font-medium text-red-800">{error}</p>
         </div>
+      )}
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
-              <p className="text-sm font-medium text-red-800">{error}</p>
-            </div>
-          )}
-
-          {/* Property Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">Property *</label>
-              <button
-                type="button"
-                onClick={() => setShowNewProperty(!showNewProperty)}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                {showNewProperty ? 'Cancel' : 'Add New Property'}
-              </button>
-            </div>
+      <div className="mt-8">
+        <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 shadow rounded-lg">
+          <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
             
-            {!showNewProperty ? (
+            {/* Owner Selection - First Priority */}
+            <div className="sm:col-span-2">
+              <label htmlFor="owner_id" className="block text-sm font-medium text-gray-700">
+                Owner <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="owner_id"
+                id="owner_id"
+                required
+                value={formData.owner_id}
+                onChange={handleOwnerChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="">Select an owner first</option>
+                {owners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.full_name} - {owner.phone}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Select the owner first to see their properties
+              </p>
+            </div>
+
+            {/* Property Selection - Filtered by Owner */}
+            <div>
+              <label htmlFor="property_id" className="block text-sm font-medium text-gray-700">
+                Property <span className="text-red-500">*</span>
+              </label>
               <select
                 name="property_id"
+                id="property_id"
                 required
                 value={formData.property_id}
                 onChange={handleChange}
-                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                disabled={!formData.owner_id}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
-                <option value="">Select a property...</option>
-                {properties.map((property) => (
+                <option value="">
+                  {!formData.owner_id ? 'Select an owner first' : 'Select a property'}
+                </option>
+                {filteredProperties.map((property) => (
                   <option key={property.id} value={property.id}>
-                    {property.title} - {property.address} (Rs. {property.price?.toLocaleString()})
+                    {property.title} - {property.address}
                   </option>
                 ))}
               </select>
-            ) : (
-              <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
-                <h4 className="text-md font-medium text-gray-900 mb-3">Add New Property</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Title *</label>
-                    <input
-                      type="text"
-                      name="title"
-                      required
-                      value={newProperty.title}
-                      onChange={handleNewPropertyChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Address *</label>
-                    <input
-                      type="text"
-                      name="address"
-                      required
-                      value={newProperty.address}
-                      onChange={handleNewPropertyChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">City *</label>
-                    <input
-                      type="text"
-                      name="city"
-                      required
-                      value={newProperty.city}
-                      onChange={handleNewPropertyChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">State</label>
-                    <input
-                      type="text"
-                      name="state"
-                      value={newProperty.state}
-                      onChange={handleNewPropertyChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Area (sq.ft.) *</label>
-                    <input
-                      type="number"
-                      name="area_sqft"
-                      required
-                      value={newProperty.area_sqft}
-                      onChange={handleNewPropertyChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Monthly Rent (Rs.) *</label>
-                    <input
-                      type="number"
-                      name="price"
-                      required
-                      value={newProperty.price}
-                      onChange={handleNewPropertyChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  {newProperty.type === 'residential' && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Bedrooms</label>
-                        <input
-                          type="number"
-                          name="bedrooms"
-                          value={newProperty.bedrooms}
-                          onChange={handleNewPropertyChange}
-                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Bathrooms</label>
-                        <input
-                          type="number"
-                          name="bathrooms"
-                          value={newProperty.bathrooms}
-                          onChange={handleNewPropertyChange}
-                          className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="mt-4 flex justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowNewProperty(false)}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={createNewProperty}
-                    className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700"
-                  >
-                    Add Property
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Tenant Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">Tenant *</label>
-              <button
-                type="button"
-                onClick={() => setShowNewTenant(!showNewTenant)}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                {showNewTenant ? 'Cancel' : 'Add New Tenant'}
-              </button>
+              <p className="mt-1 text-xs text-gray-500">
+                {formData.owner_id 
+                  ? `${filteredProperties.length} properties available for selected owner`
+                  : 'Please select an owner first'
+                }
+              </p>
             </div>
-            
-            {!showNewTenant ? (
+
+            {/* Tenant Selection */}
+            <div>
+              <label htmlFor="tenant_id" className="block text-sm font-medium text-gray-700">
+                Tenant <span className="text-red-500">*</span>
+              </label>
               <select
                 name="tenant_id"
+                id="tenant_id"
                 required
                 value={formData.tenant_id}
                 onChange={handleChange}
-                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               >
-                <option value="">Select a tenant...</option>
+                <option value="">Select a tenant</option>
                 {tenants.map((tenant) => (
                   <option key={tenant.id} value={tenant.id}>
-                    {tenant.full_name} ({tenant.phone}) {/* ✓ Use full_name */}
+                    {tenant.full_name} - {tenant.phone}
                   </option>
                 ))}
               </select>
-            ) : (
-              <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
-                <h4 className="text-md font-medium text-gray-900 mb-3">Add New Tenant</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Full Name *</label>
-                    <input
-                      type="text"
-                      name="full_name"
-                      required
-                      value={newTenant.full_name}
-                      onChange={handleNewTenantChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Phone *</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      required
-                      value={newTenant.phone}
-                      onChange={handleNewTenantChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={newTenant.email}
-                      onChange={handleNewTenantChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  {/* Remove the ID Number field completely */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700">Address</label>
-                    <textarea
-                      name="address"
-                      rows={2}
-                      value={newTenant.address}
-                      onChange={handleNewTenantChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4 flex justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowNewTenant(false)}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={createNewTenant}
-                    className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700"
-                  >
-                    Add Tenant
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Owner Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">Property Owner</label>
-              <button
-                type="button"
-                onClick={() => setShowNewOwner(!showNewOwner)}
-                className="text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                {showNewOwner ? 'Cancel' : 'Add New Owner'}
-              </button>
             </div>
-            
-            {!showNewOwner ? (
-              <select
-                name="owner_id"
-                value={formData.owner_id}
-                onChange={handleChange}
-                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              >
-                <option value="">Select an owner...</option>
-                {owners.map((owner) => (
-                  <option key={owner.id} value={owner.id}>
-                    {owner.full_name} ({owner.phone})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
-                <h4 className="text-md font-medium text-gray-900 mb-3">Add New Owner</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Full Name *</label>
-                    <input
-                      type="text"
-                      name="full_name"
-                      required
-                      value={newOwner.full_name}
-                      onChange={handleNewOwnerChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Phone *</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      required
-                      value={newOwner.phone}
-                      onChange={handleNewOwnerChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={newOwner.email}
-                      onChange={handleNewOwnerChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Address</label>
-                    <textarea
-                      name="address"
-                      rows={2}
-                      value={newOwner.address}
-                      onChange={handleNewOwnerChange}
-                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4 flex justify-end space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowNewOwner(false)}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={createNewOwner}
-                    className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700"
-                  >
-                    Add Owner
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Agreement Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Agreement Details */}
             <div>
-              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
-                Start Date *
+              <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
+                Start Date <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
-                name="startDate"
-                id="startDate"
+                name="start_date"
+                id="start_date"
                 required
-                value={formData.startDate}
+                value={formData.start_date}
                 onChange={handleChange}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               />
             </div>
 
             <div>
-              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
-                End Date *
+              <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">
+                End Date <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
-                name="endDate"
-                id="endDate"
+                name="end_date"
+                id="end_date"
                 required
-                value={formData.endDate}
+                value={formData.end_date}
                 onChange={handleChange}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               />
             </div>
 
             <div>
-              <label htmlFor="rentAmount" className="block text-sm font-medium text-gray-700">
-                Monthly Rent (Rs.) *
+              <label htmlFor="monthly_rent" className="block text-sm font-medium text-gray-700">
+                Monthly Rent (Rs.) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
-                name="rentAmount"
-                id="rentAmount"
-                step="0.01"
-                min="0"
+                name="monthly_rent"
+                id="monthly_rent"
                 required
-                value={formData.rentAmount}
+                min="0"
+                step="0.01"
+                value={formData.monthly_rent}
                 onChange={handleChange}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter monthly rent amount"
               />
             </div>
 
             <div>
-              <label htmlFor="securityDeposit" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="security_deposit" className="block text-sm font-medium text-gray-700">
                 Security Deposit (Rs.)
               </label>
               <input
                 type="number"
-                name="securityDeposit"
-                id="securityDeposit"
-                step="0.01"
+                name="security_deposit"
+                id="security_deposit"
                 min="0"
-                value={formData.securityDeposit}
+                step="0.01"
+                value={formData.security_deposit}
                 onChange={handleChange}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter security deposit amount"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="status"
+                id="status"
+                required
+                value={formData.status}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="active">Active</option>
+                <option value="pending_renewal">Pending Renewal</option>
+                <option value="expired">Expired</option>
+                <option value="terminated">Terminated</option>
+              </select>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label htmlFor="terms_conditions" className="block text-sm font-medium text-gray-700">
+                Terms & Conditions
+              </label>
+              <textarea
+                name="terms_conditions"
+                id="terms_conditions"
+                rows={6}
+                value={formData.terms_conditions}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter terms and conditions for the rental agreement..."
               />
             </div>
           </div>
 
-          <div>
-            <label htmlFor="terms" className="block text-sm font-medium text-gray-700">
-              Terms and Conditions
-            </label>
-            <textarea
-              name="terms"
-              id="terms"
-              rows={4}
-              value={formData.terms}
-              onChange={handleChange}
-              className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Enter terms and conditions for the rental agreement..."
-            />
+          <div className="bg-gray-50 px-4 py-3 rounded-md">
+            <p className="text-sm text-gray-600">
+              <span className="text-red-500">*</span> Required fields
+            </p>
           </div>
 
           <div className="flex justify-end space-x-3">
@@ -744,10 +381,10 @@ export default function NewRentAgreementPage() {
             </Link>
             <button
               type="submit"
-              disabled={loading}
+              disabled={isSubmitting}
               className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create Agreement'}
+              {isSubmitting ? 'Creating...' : 'Create Agreement'}
             </button>
           </div>
         </form>

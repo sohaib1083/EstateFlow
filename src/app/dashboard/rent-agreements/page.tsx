@@ -19,10 +19,35 @@ export default function RentAgreementsPage() {
         .from('rent_agreements')
         .select(`
           *,
-          properties(title, address),
-          tenants(full_name, phone)
+          properties(
+            id,
+            title,
+            address,
+            property_owners(
+              owner_id,
+              ownership_percentage,
+              owners(
+                id,
+                full_name
+              )
+            )
+          ),
+          tenants(
+            id,
+            full_name,
+            phone
+          ),
+          owners(
+            id,
+            full_name,
+            phone,
+            email
+          )
         `)
         .order('created_at', { ascending: false });
+
+      console.log('Rent agreements data:', data);
+      console.log('Query error:', error);
 
       if (error) throw error;
       setRentAgreements(data || []);
@@ -115,7 +140,7 @@ export default function RentAgreementsPage() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Property
+                          Property / Owner
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Tenant
@@ -139,18 +164,20 @@ export default function RentAgreementsPage() {
                         <tr key={agreement.id}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
-                              {agreement.properties?.title || 'N/A'}
+                              {agreement.properties?.title}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {agreement.properties?.address || ''}
+                              Owner: {agreement.owners?.full_name || 
+                                      agreement.properties?.property_owners?.[0]?.owners?.full_name || 
+                                      'No owner assigned'}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {agreement.tenants?.full_name || 'N/A'}
+                            <div className="text-sm font-medium text-gray-900">
+                              {agreement.tenants?.full_name}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {agreement.tenants?.phone || ''}
+                              {agreement.tenants?.phone}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

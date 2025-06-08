@@ -4,20 +4,28 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import ContactPicker from '@/components/ContactPicker';
 
 export default function NewTenantPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Form state - name and phone required, email and address optional
   const [formData, setFormData] = useState({
-    name: '', // Required
-    phone: '', // Required
-    email: '', // Optional
-    address: '', // Optional
-    id_number: '' // Optional
+    full_name: '',
+    email: '',
+    phone: '',
+    address: ''
   });
+
+  const handleContactSelected = (contact: { name: string; phone: string; email?: string }) => {
+    setFormData(prev => ({
+      ...prev,
+      full_name: contact.name || prev.full_name,
+      phone: contact.phone || prev.phone,
+      email: contact.email || prev.email
+    }));
+  };
 
   // Handle input change
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -36,13 +44,13 @@ export default function NewTenantPage() {
 
     try {
       // Validate only required fields (name and phone)
-      if (!formData.name || !formData.phone) {
+      if (!formData.full_name || !formData.phone) {
         throw new Error('Please fill in Name and Phone Number (required fields)');
       }
 
-      // Save to Supabase - only send non-empty optional fields
+      // Save to Supabase - use correct column names
       const insertData: any = {
-        name: formData.name,
+        full_name: formData.full_name,  // Changed from 'name' to 'full_name'
         phone: formData.phone
       };
 
@@ -52,9 +60,6 @@ export default function NewTenantPage() {
       }
       if (formData.address && formData.address.trim()) {
         insertData.address = formData.address.trim();
-      }
-      if (formData.id_number && formData.id_number.trim()) {
-        insertData.id_number = formData.id_number.trim();
       }
 
       const { data, error: supabaseError } = await supabase
@@ -101,94 +106,82 @@ export default function NewTenantPage() {
 
       <div className="mt-8">
         <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 shadow rounded-lg">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+              <p className="text-sm font-medium text-red-800">{error}</p>
+            </div>
+          )}
+
+          {/* Contact Picker */}
+          <div className="border-b border-gray-200 pb-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Quick Fill</h3>
+            <p className="text-sm text-gray-500 mb-3">
+              Pick a contact from your phone to auto-fill the form
+            </p>
+            <ContactPicker onContactSelected={handleContactSelected} />
+          </div>
+
           <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
-            {/* Required Fields */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="full_name" className="block text-sm font-medium text-gray-700">
                 Full Name <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1">
-                <input
-                  type="text"
-                  name="name"
-                  id="name"
-                  required
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Enter tenant's full name"
-                />
-              </div>
+              <input
+                type="text"
+                name="full_name"
+                id="full_name"
+                required
+                value={formData.full_name}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter full name"
+              />
             </div>
 
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone Number <span className="text-red-500">*</span>
+                Phone <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1">
-                <input
-                  type="tel"
-                  name="phone"
-                  id="phone"
-                  required
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Enter phone number"
-                />
-              </div>
+              <input
+                type="tel"
+                name="phone"
+                id="phone"
+                required
+                value={formData.phone}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter phone number"
+              />
             </div>
 
-            {/* Optional Fields */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email <span className="text-gray-400">(Optional)</span>
+                Email
               </label>
-              <div className="mt-1">
-                <input
-                  type="email"
-                  name="email"
-                  id="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Enter email address"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="id_number" className="block text-sm font-medium text-gray-700">
-                ID Number <span className="text-gray-400">(Optional)</span>
-              </label>
-              <div className="mt-1">
-                <input
-                  type="text"
-                  name="id_number"
-                  id="id_number"
-                  value={formData.id_number}
-                  onChange={handleChange}
-                  placeholder="e.g., Aadhar, PAN, Passport number"
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                />
-              </div>
+              <input
+                type="email"
+                name="email"
+                id="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter email address"
+              />
             </div>
 
             <div className="sm:col-span-2">
               <label htmlFor="address" className="block text-sm font-medium text-gray-700">
-                Address <span className="text-gray-400">(Optional)</span>
+                Address
               </label>
-              <div className="mt-1">
-                <textarea
-                  name="address"
-                  id="address"
-                  rows={3}
-                  value={formData.address}
-                  onChange={handleChange}
-                  className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Enter tenant's address"
-                />
-              </div>
+              <textarea
+                name="address"
+                id="address"
+                rows={3}
+                value={formData.address}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter full address"
+              />
             </div>
           </div>
 
